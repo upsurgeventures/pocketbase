@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/dbx"
+	validation "github.com/pocketbase/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/auth"
 	"github.com/pocketbase/pocketbase/tools/dbutils"
@@ -350,11 +350,28 @@ func oauth2Submit(e *core.RecordAuthWithOAuth2RequestEvent, optExternalAuth *cor
 				e.Auth.Id == e.Record.Id &&
 				e.Auth.Collection().Id == e.Record.Collection().Id
 
-			// set random password for users with unverified email
-			// (this is in case a malicious actor has registered previously with the user email)
-			if !isLoggedAuthRecord && e.Record.Email() != "" && !e.Record.Verified() {
-				e.Record.SetRandomPassword()
+			// prevent pre-hijacking with password auth
+			//
+			// reset the unverified user password in case the record was precreated by a malicious actor
+			if !isLoggedAuthRecord && !e.Record.Verified() {
 				needUpdate = true
+				e.Record.SetRandomPassword()
+			}
+
+			// prevent pre-hijacking with different OAuth2 provider
+			//
+			// delete all other previous OAuth2 record links for the cases
+			// when the user was precreated by malicious OAuth2 auth with custom payload data
+			//
+			// while this would be also done automatically on unverified -> verified upgrade,
+			// doing it manually here ensures that a single unverified record could have
+			// max 1 OAuth2 link to prevent further abuse when mixed with other auth flows
+			if !e.Record.Verified() {
+				err := txApp.DeleteAllExternalAuthsByRecord(e.Record)
+				if err != nil {
+					return err
+				}
+				optExternalAuth = nil // clear to allow recreate below
 			}
 
 			// update the existing auth record empty email if the data.OAuth2User has one
