@@ -60,7 +60,7 @@ type Config struct {
 	DefaultPostgresURL    string // if not set, it will fallback to "postgres://postgres:admin@127.0.0.1:5432/postgres?sslmode=disable"
 	DefaultPostgresDataDb string // if not set, it will fallback to "pb-data"
 	DefaultPostgresAuxDb  string // if not set, it will fallback to "pb-auxiliary"
-	DefaultRealtimeBridge *bool  // if not set, it will fallback to the `true`
+	DefaultRealtimeBridge *bool  // if not set, it will fallback to `false` (opt-in)
 	DefaultEncryptionEnv  string
 	DefaultQueryTimeout   time.Duration // default to core.DefaultQueryTimeout (in seconds)
 
@@ -122,7 +122,7 @@ func NewWithConfig(config Config) *PocketBase {
 		if enable, err := strconv.ParseBool(os.Getenv("PB_REALTIME_BRIDGE")); err == nil {
 			config.DefaultRealtimeBridge = &enable
 		} else {
-			enable = true
+			enable = false
 			config.DefaultRealtimeBridge = &enable
 		}
 	}

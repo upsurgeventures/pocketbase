@@ -42,10 +42,8 @@ func (app *BaseApp) FindAllCollections(collectionTypes ...string) ([]*Collection
 	err := q.OrderBy("rowid ASC").All(&collections)
 	*/
 	// PostgreSQL:
-	// Sorting the columns by ctid just to provide a relatively more stable result.
-	// The order of collections may change because of ctid changing during as time goes by.
-	// The result is not guaranteed to be the same as when they inserted to database.
-	err := q.OrderBy("ctid ASC").All(&collections)
+	// The `rowid` column is a BIGSERIAL that preserves the collection insertion order.
+	err := q.OrderBy("rowid ASC").All(&collections)
 	if err != nil {
 		return nil, err
 	}

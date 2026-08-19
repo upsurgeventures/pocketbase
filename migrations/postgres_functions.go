@@ -4,6 +4,11 @@ import "github.com/pocketbase/dbx"
 
 func createSQLiteEquivalentFunctions(db dbx.Builder) error {
 	funcDef := `
+	-- Serialize concurrent bootstraps against the same database.
+	-- CREATE EXTENSION/COLLATION/FUNCTION can deadlock on catalog locks
+	-- when two app instances run this migration simultaneously on a fresh DB.
+	SELECT pg_advisory_xact_lock(723390690);
+
 	-- Enable built-in pgcrypto extension to use gen_random_bytes function
 	CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
