@@ -12,6 +12,8 @@ coverage.out
 # generated/local data & migrations (dev artifacts)
 /pb_data/
 /pb_migrations/
+docs/
+.omx/
 
 # local test/CI artifacts
 /go-test-report.html
