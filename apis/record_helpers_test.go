@@ -294,12 +294,12 @@ func TestRecordAuthResponseAuthRuleCheck(t *testing.T) {
 		},
 		{
 			"false rule",
-			types.Pointer("1=2"),
+			types.Pointer("true=false"),
 			true,
 		},
 		{
 			"true rule",
-			types.Pointer("1=1"),
+			types.Pointer("true=true"),
 			false,
 		},
 	}
@@ -560,7 +560,7 @@ func TestRecordAuthResponseMFACheck(t *testing.T) {
 
 	t.Run("no mfa wanted (mfa rule check failure)", func(t *testing.T) {
 		resetMFAs(user)
-		user.Collection().MFA.Rule = "1=2"
+		user.Collection().MFA.Rule = "true=false"
 
 		err = apis.RecordAuthResponse(event, user, "example", nil)
 		if err != nil {
@@ -582,7 +582,7 @@ func TestRecordAuthResponseMFACheck(t *testing.T) {
 
 	t.Run("mfa wanted (mfa rule check success)", func(t *testing.T) {
 		resetMFAs(user)
-		user.Collection().MFA.Rule = "1=1"
+		user.Collection().MFA.Rule = "true=true"
 
 		err = apis.RecordAuthResponse(event, user, "example", nil)
 		if !errors.Is(err, apis.ErrMFA) {
@@ -756,6 +756,42 @@ func TestRecordAuthResponseMFACheck(t *testing.T) {
 
 		if total := totalMFAs(user2); total != 1 {
 			t.Fatalf("Expected only 1 user2 mfa, got %d", total)
+		}
+	})
+}
+
+func TestRecordAuthResponseSuperuserIPsWhitelistCheck(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	superuser, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, "test@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app.Settings().TrustedProxy.Headers = []string{"x-test-ip"}
+
+	event := new(core.RequestEvent)
+	event.App = app
+	event.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	event.Request.Header.Set("x-test-ip", "127.0.0.1")
+	event.Response = httptest.NewRecorder()
+
+	t.Run("non-whitelisted", func(t *testing.T) {
+		app.Settings().SuperuserIPs = []string{"0.0.0.0"}
+
+		err = apis.RecordAuthResponse(event, superuser, "example", nil)
+		if err == nil {
+			t.Fatal("Expected response error, got nil")
+		}
+	})
+
+	t.Run("whitelisted", func(t *testing.T) {
+		app.Settings().SuperuserIPs = []string{"0.0.0.0", "127.0.0.1"}
+
+		err = apis.RecordAuthResponse(event, superuser, "example", nil)
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 }
