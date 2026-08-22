@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -122,10 +123,11 @@ func TestRealtimeBridge(t *testing.T) {
 		// Send message from to client1 from the same pocketbase instance
 		message := subscriptions.Message{Name: "test1", Data: []byte("Hello World!")}
 		local_client1_in_channelA.Send(message)
-		if len(testClient.SentMessages) != 1 {
+		messages := testClient.messages()
+		if len(messages) != 1 {
 			t.Fatalf("Expected local client channel to have first message, but got empty")
 		} else {
-			msg := testClient.SentMessages[0]
+			msg := messages[0]
 			if msg.Name != "test1" || string(msg.Data) != "Hello World!" {
 				t.Fatalf("Expected message to be 'Hello World!', but got %s", string(msg.Data))
 			}
@@ -140,10 +142,11 @@ func TestRealtimeBridge(t *testing.T) {
 		message := subscriptions.Message{Name: "test2", Data: []byte("Hello World!")}
 		remote_client1_in_channelB.Send(message)
 		time.Sleep(time.Second * 5) // wait for the message to be sent
-		if len(testClient.SentMessages) != 2 {
+		messages := testClient.messages()
+		if len(messages) != 2 {
 			t.Fatalf("Expected local client channel to have second message, but got empty")
 		} else {
-			msg := testClient.SentMessages[1]
+			msg := messages[1]
 			if msg.Name != "test2" || string(msg.Data) != "Hello World!" {
 				t.Fatalf("Expected message to be 'Hello World!', but got %s", string(msg.Data))
 			}
@@ -300,6 +303,39 @@ func TestRealtimeBridge_ChannelOffline(t *testing.T) {
 	t.Logf("Test passed")
 }
 
+func TestRealtimeBridge_ShutdownWaitsForLoops(t *testing.T) {
+	_, currentFile, _, _ := runtime.Caller(0)
+	config := core.BaseAppConfig{
+		DataDir:          filepath.Join(path.Dir(currentFile), "..", "tests", "data"),
+		EncryptionEnv:    "pb_test_env",
+		PostgresURL:      "postgres://postgres:admin@127.0.0.1:5432/postgres?sslmode=disable",
+		PostgresDataDB:   "pb_test_" + security.RandomString(5),
+		PostgresAuxDB:    "pb_test_" + security.RandomString(5) + "_aux",
+		IsRealtimeBridge: true,
+	}
+	app, err := tests.NewTestAppWithConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := newBridge(app, ":8093"); !ok {
+		app.Cleanup()
+		t.Fatal("Failed to create bridge")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		app.Cleanup()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Cleanup hung waiting for realtime bridge loops to stop")
+	}
+}
+
 func newBridge(app core.App, addr string) (*apis.RealtimeBridge, bool) {
 
 	// Create a new RealtimeBridge instance
@@ -318,10 +354,20 @@ func newBridge(app core.App, addr string) (*apis.RealtimeBridge, bool) {
 
 type TestClient struct {
 	subscriptions.Client
+	mu           sync.Mutex
 	SentMessages []subscriptions.Message
 }
 
 func (c *TestClient) Send(message subscriptions.Message) {
-	// c.Client.Send(message)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.SentMessages = append(c.SentMessages, message)
+}
+
+func (c *TestClient) messages() []subscriptions.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]subscriptions.Message, len(c.SentMessages))
+	copy(out, c.SentMessages)
+	return out
 }
