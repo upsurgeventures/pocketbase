@@ -218,6 +218,7 @@ func (t *RealtimeBridge) fullRefreshSubscriptions() {
 	}).Rows()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error loading subscriptions:", err)
+		return
 	}
 	defer rows.Close()
 
@@ -294,7 +295,7 @@ func (t *RealtimeBridge) heartbeatLoop(ctx context.Context) {
 		default:
 			if !t.app.IsBootstrapped() {
 				fmt.Fprintln(os.Stderr, "App is not initialized or stopped, stopping realtime sync heartbeat loop.")
-				break
+				return
 			}
 			_, err := t.app.DB().NewQuery(`
 				WITH 
