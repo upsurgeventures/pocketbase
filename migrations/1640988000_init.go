@@ -59,6 +59,7 @@ func init() {
 		_, execerr := txApp.DB().NewQuery(`
 			CREATE TABLE {{_collections}} (
 				[[id]]         TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
+				[[rowid]]      BIGSERIAL,
 				[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
 				[[type]]       TEXT DEFAULT 'base' NOT NULL,
 				[[name]]       TEXT UNIQUE NOT NULL,

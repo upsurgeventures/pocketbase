@@ -79,6 +79,10 @@ func bindRealtimeBridge(app core.App) {
 // 2. Listen collection_updated and settings_updated events.
 func (t *RealtimeBridge) listenSharedBridgeChannelLoop(ctx context.Context) {
 	loopOnNotification(ctx, t.app, "shared_bridge_channel", func() {
+		if !t.app.IsBootstrapped() {
+			return
+		}
+
 		// When it connected to the stream, we need to reload all subscriptions
 		// to make sure that we have the latest state.
 		t.fullRefreshSubscriptions()
@@ -201,6 +205,10 @@ var pgTypes = pgtype.NewMap()
 
 // reload all remote realtime subscriptions
 func (t *RealtimeBridge) fullRefreshSubscriptions() {
+	if !t.app.IsBootstrapped() {
+		return
+	}
+
 	rows, err := t.app.DB().NewQuery(`
 		SELECT "clientId", "channelId", "subscriptions", "authCollectionRef", "authRecordRef", "updatedByChannelId"
 		FROM "_realtimeClients"
@@ -284,7 +292,7 @@ func (t *RealtimeBridge) heartbeatLoop(ctx context.Context) {
 			fmt.Fprintln(os.Stderr, "Stopping realtime sync heartbeat loop.")
 			return
 		default:
-			if t.app.DB() == nil {
+			if !t.app.IsBootstrapped() {
 				fmt.Fprintln(os.Stderr, "App is not initialized or stopped, stopping realtime sync heartbeat loop.")
 				break
 			}

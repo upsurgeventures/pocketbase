@@ -123,8 +123,17 @@ ALTER TABLE public."_authOrigins" OWNER TO postgres;
 -- Name: _collections; Type: TABLE; Schema: public; Owner: user
 --
 
+CREATE SEQUENCE public._collections_rowid_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
 CREATE TABLE public._collections (
     id text NOT NULL,
+    rowid bigint DEFAULT nextval('public._collections_rowid_seq'::regclass) NOT NULL,
     system boolean DEFAULT false,
     type text DEFAULT '"base"'::text,
     name text,
@@ -142,6 +151,9 @@ CREATE TABLE public._collections (
 
 
 ALTER TABLE public._collections OWNER TO postgres;
+
+
+ALTER SEQUENCE public._collections_rowid_seq OWNED BY public._collections.rowid;
 
 --
 -- Name: "_externalAuths"; Type: TABLE; Schema: public; Owner: user
