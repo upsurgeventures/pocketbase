@@ -172,6 +172,7 @@ func buildResolversExpr(
 	right *ResolverResult,
 ) (dbx.Expression, error) {
 	normalizePostgresJSONOperands(left, op, right)
+	normalizePostgresLikeOperands(left, op, right)
 
 	var expr dbx.Expression
 
@@ -270,9 +271,23 @@ func normalizePostgresJSONOperands(left *ResolverResult, op fexpr.SignOp, right 
 	case fexpr.SignLt, fexpr.SignAnyLt, fexpr.SignLte, fexpr.SignAnyLte,
 		fexpr.SignGt, fexpr.SignAnyGt, fexpr.SignGte, fexpr.SignAnyGte:
 		jsonSide.Identifier += "::numeric"
-	case fexpr.SignLike, fexpr.SignAnyLike, fexpr.SignNlike, fexpr.SignAnyNlike:
-		jsonSide.Identifier += "::text"
 	}
+}
+
+func normalizePostgresLikeOperands(left *ResolverResult, op fexpr.SignOp, right *ResolverResult) {
+	switch op {
+	case fexpr.SignLike, fexpr.SignAnyLike, fexpr.SignNlike, fexpr.SignAnyNlike:
+		left.Identifier = postgresTextIdentifier(left.Identifier)
+		right.Identifier = postgresTextIdentifier(right.Identifier)
+	}
+}
+
+func postgresTextIdentifier(identifier string) string {
+	if strings.HasSuffix(strings.TrimSpace(identifier), "::text") {
+		return identifier
+	}
+
+	return identifier + "::text"
 }
 
 func postgresToJSONB(result *ResolverResult) string {
