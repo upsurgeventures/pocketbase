@@ -63,37 +63,37 @@ func TestFilterDataBuildExpr(t *testing.T) {
 			"like with 2 columns",
 			"test1 ~ test2",
 			false,
-			"[[test1]] LIKE ('%' || [[test2]] || '%') ESCAPE '\\'",
+			"[[test1]]::text LIKE ('%' || [[test2]]::text || '%') ESCAPE '\\'",
 		},
 		{
 			"like with right column operand",
 			"'lorem' ~ test1",
 			false,
-			"{:TEST} LIKE ('%' || [[test1]] || '%') ESCAPE '\\'",
+			"{:TEST}::text LIKE ('%' || [[test1]]::text || '%') ESCAPE '\\'",
 		},
 		{
 			"like with left column operand and text as right operand",
 			"test1 ~ 'lorem'",
 			false,
-			"[[test1]] LIKE {:TEST} ESCAPE '\\'",
+			"[[test1]]::text LIKE {:TEST}::text ESCAPE '\\'",
 		},
 		{
 			"not like with 2 columns",
 			"test1 !~ test2",
 			false,
-			"[[test1]] NOT LIKE ('%' || [[test2]] || '%') ESCAPE '\\'",
+			"[[test1]]::text NOT LIKE ('%' || [[test2]]::text || '%') ESCAPE '\\'",
 		},
 		{
 			"not like with right column operand",
 			"'lorem' !~ test1",
 			false,
-			"{:TEST} NOT LIKE ('%' || [[test1]] || '%') ESCAPE '\\'",
+			"{:TEST}::text NOT LIKE ('%' || [[test1]]::text || '%') ESCAPE '\\'",
 		},
 		{
 			"like with left column operand and text as right operand",
 			"test1 !~ 'lorem'",
 			false,
-			"[[test1]] NOT LIKE {:TEST} ESCAPE '\\'",
+			"[[test1]]::text NOT LIKE {:TEST}::text ESCAPE '\\'",
 		},
 		{
 			"nested json no coalesce",
@@ -126,7 +126,7 @@ func TestFilterDataBuildExpr(t *testing.T) {
 			"complex expression",
 			"((test1 > 1) || (test2 != 2)) && test3 ~ '%%example' && test4_sub = null",
 			false,
-			"(([[test1]] > {:TEST}::numeric OR [[test2]] IS DISTINCT FROM {:TEST}::numeric) AND [[test3]] LIKE {:TEST} ESCAPE '\\' AND ([[test4_sub]]::text = ''::text OR [[test4_sub]] IS NULL))",
+			"(([[test1]] > {:TEST}::numeric OR [[test2]] IS DISTINCT FROM {:TEST}::numeric) AND [[test3]]::text LIKE {:TEST}::text ESCAPE '\\' AND ([[test4_sub]]::text = ''::text OR [[test4_sub]] IS NULL))",
 		},
 		{
 			"combination of special literals (null, true, false)",
@@ -138,7 +138,7 @@ func TestFilterDataBuildExpr(t *testing.T) {
 			"all operators",
 			"(test1 = test2 || test2 != test3) && (test2 ~ 'example' || test2 !~ '%%abc') && 'switch1%%' ~ test1 && 'switch2' !~ test2 && test3 > 1 && test3 >= 0 && test3 <= 4 && 2 < 5",
 			false,
-			"((COALESCE([[test1]]::text, '') = COALESCE([[test2]]::text, '') OR COALESCE([[test2]]::text, '') IS DISTINCT FROM COALESCE([[test3]]::text, '')) AND ([[test2]] LIKE {:TEST} ESCAPE '\\' OR [[test2]] NOT LIKE {:TEST} ESCAPE '\\') AND {:TEST} LIKE ('%' || [[test1]] || '%') ESCAPE '\\' AND {:TEST} NOT LIKE ('%' || [[test2]] || '%') ESCAPE '\\' AND [[test3]] > {:TEST}::numeric AND [[test3]] >= {:TEST}::numeric AND [[test3]] <= {:TEST}::numeric AND {:TEST}::numeric < {:TEST}::numeric)",
+			"((COALESCE([[test1]]::text, '') = COALESCE([[test2]]::text, '') OR COALESCE([[test2]]::text, '') IS DISTINCT FROM COALESCE([[test3]]::text, '')) AND ([[test2]]::text LIKE {:TEST}::text ESCAPE '\\' OR [[test2]]::text NOT LIKE {:TEST}::text ESCAPE '\\') AND {:TEST}::text LIKE ('%' || [[test1]]::text || '%') ESCAPE '\\' AND {:TEST}::text NOT LIKE ('%' || [[test2]]::text || '%') ESCAPE '\\' AND [[test3]] > {:TEST}::numeric AND [[test3]] >= {:TEST}::numeric AND [[test3]] <= {:TEST}::numeric AND {:TEST}::numeric < {:TEST}::numeric)",
 		},
 		{
 			"geoDistance function",
@@ -177,6 +177,22 @@ func TestFilterDataBuildExpr(t *testing.T) {
 				t.Fatalf("[%s] Pattern %v don't match with expression: \n%v", s.name, expectPattern, rawSql)
 			}
 		})
+	}
+}
+
+func TestFilterDataBuildLikeExprCastsOperandsToText(t *testing.T) {
+	resolver := search.NewSimpleFieldResolver("verified", "created")
+
+	expr, err := search.FilterData("verified ?~ 'gautham' || created ?!~ 'gautham'").BuildExpr(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawSQL := expr.Build(&dbx.DB{}, dbx.Params{})
+	rawSQL = regexp.MustCompile(`\{:\w+\}`).ReplaceAllString(rawSQL, "{:TEST}")
+	expected := `([[verified]]::text LIKE {:TEST}::text ESCAPE '\' OR [[created]]::text NOT LIKE {:TEST}::text ESCAPE '\')`
+	if rawSQL != expected {
+		t.Fatalf("expected LIKE operands to be cast to text, got:\n%s", rawSQL)
 	}
 }
 
@@ -340,8 +356,8 @@ func TestLikeParamsWrapping(t *testing.T) {
 		t.Fatalf("Expected 1 query, got %d", len(calledQueries))
 	}
 
-	expectedQuery := `SELECT * WHERE ([[test1]] LIKE '%abc%' ESCAPE '\' OR [[test2]] LIKE 'ab%c' ESCAPE '\' OR [[test3]] LIKE '%ab\%c%' ESCAPE '\' OR [[test4]] LIKE '%ab\%c' ESCAPE '\' OR [[test5]] LIKE 'ab\\%c' ESCAPE '\' OR [[test6]] LIKE '%ab\\\%c%' ESCAPE '\' OR [[test7]] LIKE '%ab\_c%' ESCAPE '\' OR [[test8]] LIKE '%ab\_c%' ESCAPE '\' OR [[test9]] LIKE '%ab_c' ESCAPE '\' OR [[test10]] LIKE '%ab\\c%' ESCAPE '\' OR [[test11]] LIKE '%\_ab\\c\_%' ESCAPE '\' OR [[test12]] LIKE 'ab\c%' ESCAPE '\' OR [[test13]] LIKE '%a`
-	expectedQuery += "\n" + `b\\%' ESCAPE '\')`
+	expectedQuery := `SELECT * WHERE ([[test1]]::text LIKE '%abc%'::text ESCAPE '\' OR [[test2]]::text LIKE 'ab%c'::text ESCAPE '\' OR [[test3]]::text LIKE '%ab\%c%'::text ESCAPE '\' OR [[test4]]::text LIKE '%ab\%c'::text ESCAPE '\' OR [[test5]]::text LIKE 'ab\\%c'::text ESCAPE '\' OR [[test6]]::text LIKE '%ab\\\%c%'::text ESCAPE '\' OR [[test7]]::text LIKE '%ab\_c%'::text ESCAPE '\' OR [[test8]]::text LIKE '%ab\_c%'::text ESCAPE '\' OR [[test9]]::text LIKE '%ab_c'::text ESCAPE '\' OR [[test10]]::text LIKE '%ab\\c%'::text ESCAPE '\' OR [[test11]]::text LIKE '%\_ab\\c\_%'::text ESCAPE '\' OR [[test12]]::text LIKE 'ab\c%'::text ESCAPE '\' OR [[test13]]::text LIKE '%a`
+	expectedQuery += "\n" + `b\\%'::text ESCAPE '\')`
 	if expectedQuery != calledQueries[0] {
 		t.Fatalf("Expected query \n%s, \ngot \n%s", expectedQuery, calledQueries[0])
 	}
