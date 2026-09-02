@@ -2,7 +2,7 @@ package core_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"testing"
 
@@ -123,7 +123,7 @@ func TestSelectFieldPrepareValue(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			vRaw, err := json.Marshal(v)
+			vRaw, err := json.Marshal(v, json.Deterministic(true))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -185,7 +185,7 @@ func TestSelectFieldDriverValue(t *testing.T) {
 				}
 			}
 
-			vRaw, err := json.Marshal(v)
+			vRaw, err := json.Marshal(v, json.Deterministic(true))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -507,7 +507,7 @@ func TestSelectFieldFindSetter(t *testing.T) {
 
 			setter(record, s.value)
 
-			raw, err := json.Marshal(record.Get(s.field.GetName()))
+			raw, err := json.Marshal(record.Get(s.field.GetName()), json.Deterministic(true))
 			if err != nil {
 				t.Fatal(err)
 			}
