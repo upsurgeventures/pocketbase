@@ -2,7 +2,7 @@ package apis_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -1175,7 +1175,9 @@ func TestRealtimeRecordResolve(t *testing.T) {
 
 			var mu sync.Mutex
 			notify := func(clientId string, eventData []byte) {
-				data := struct{ Action string }{}
+				data := struct {
+					Action string `json:"action"`
+				}{}
 				_ = json.Unmarshal(eventData, &data)
 
 				mu.Lock()

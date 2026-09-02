@@ -53,6 +53,9 @@ const (
 
 	// @todo consider removing after backups refactoring
 	lostFoundDirName string = "lost+found"
+
+	dataDBFilename string = "data.db"
+	auxDBFilename  string = "auxiliary.db"
 )
 
 // FilesManager defines an interface with common methods that files manager models should implement.
@@ -158,6 +161,17 @@ type BaseApp struct {
 	onMailerRecordEmailChangeSend   *hook.Hook[*MailerRecordEvent]
 	onMailerRecordOTPSend           *hook.Hook[*MailerRecordEvent]
 	onMailerRecordAuthAlertSend     *hook.Hook[*MailerRecordEvent]
+
+	// filesystem event hooks
+	//
+	// @todo 1:
+	// intentionally not exposed since the events are too "chatty" and
+	// can cause unnecessary userland tests breaking changes;
+	// reevaluate once refactoring the file_field
+	//
+	// @todo 2: if exposed consider registering the same for the backup filesystem
+	_onFilesystemNewWriter *hook.Hook[*FilesystemNewWriterEvent]
+	_onFilesystemDelete    *hook.Hook[*FilesystemDeleteEvent]
 
 	// realtime api event hooks
 	onRealtimeConnectRequest   *hook.Hook[*RealtimeConnectRequestEvent]
@@ -335,6 +349,10 @@ func (app *BaseApp) initHooks() {
 	app.onMailerRecordEmailChangeSend = &hook.Hook[*MailerRecordEvent]{}
 	app.onMailerRecordOTPSend = &hook.Hook[*MailerRecordEvent]{}
 	app.onMailerRecordAuthAlertSend = &hook.Hook[*MailerRecordEvent]{}
+
+	// filesystem event hooks
+	app._onFilesystemNewWriter = &hook.Hook[*FilesystemNewWriterEvent]{}
+	app._onFilesystemDelete = &hook.Hook[*FilesystemDeleteEvent]{}
 
 	// realtime API event hooks
 	app.onRealtimeConnectRequest = &hook.Hook[*RealtimeConnectRequestEvent]{}
@@ -771,9 +789,10 @@ func (app *BaseApp) NewMailClient() mailer.Mailer {
 //
 // NB! Make sure to call Close() on the returned result
 // after you are done working with it.
-func (app *BaseApp) NewFilesystem() (*filesystem.System, error) {
+func (app *BaseApp) NewFilesystem() (fsys *filesystem.System, err error) {
 	if app.settings != nil && app.settings.S3.Enabled {
-		return filesystem.NewS3(
+		// S3
+		fsys, err = filesystem.NewS3(
 			app.settings.S3.Bucket,
 			app.settings.S3.Region,
 			app.settings.S3.Endpoint,
@@ -781,10 +800,41 @@ func (app *BaseApp) NewFilesystem() (*filesystem.System, error) {
 			app.settings.S3.Secret,
 			app.settings.S3.ForcePathStyle,
 		)
+	} else {
+		// local filesystem
+		fsys, err = filesystem.NewLocal(filepath.Join(app.DataDir(), LocalStorageDirName))
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	// fallback to local filesystem
-	return filesystem.NewLocal(filepath.Join(app.DataDir(), LocalStorageDirName))
+	// attach delete hook
+	if app._onFilesystemDelete.Length() > 0 {
+		fsys.OnDelete().BindFunc(func(originalEvent *filesystem.DeleteEvent) error {
+			appEvent := new(FilesystemDeleteEvent)
+			appEvent.DeleteEvent = originalEvent
+			appEvent.App = app
+
+			return app._onFilesystemDelete.Trigger(appEvent, func(fde *FilesystemDeleteEvent) error {
+				return originalEvent.Next()
+			})
+		})
+	}
+
+	// attach write hook
+	if app._onFilesystemNewWriter.Length() > 0 {
+		fsys.OnNewWriter().BindFunc(func(originalEvent *filesystem.NewWriterEvent) error {
+			appEvent := new(FilesystemNewWriterEvent)
+			appEvent.NewWriterEvent = originalEvent
+			appEvent.App = app
+
+			return app._onFilesystemNewWriter.Trigger(appEvent, func(fwe *FilesystemNewWriterEvent) error {
+				return originalEvent.Next()
+			})
+		})
+	}
+
+	return fsys, nil
 }
 
 // NewBackupsFilesystem creates a new local or S3 filesystem instance
@@ -1073,6 +1123,18 @@ func (app *BaseApp) OnMailerRecordOTPSend(tags ...string) *hook.TaggedHook[*Mail
 
 func (app *BaseApp) OnMailerRecordAuthAlertSend(tags ...string) *hook.TaggedHook[*MailerRecordEvent] {
 	return hook.NewTaggedHook(app.onMailerRecordAuthAlertSend, tags...)
+}
+
+// -------------------------------------------------------------------
+// Filesystem event hooks
+// -------------------------------------------------------------------
+
+func (app *BaseApp) onFilesystemNewWriter() *hook.Hook[*FilesystemNewWriterEvent] {
+	return app._onFilesystemNewWriter
+}
+
+func (app *BaseApp) onFilesystemDelete() *hook.Hook[*FilesystemDeleteEvent] {
+	return app._onFilesystemDelete
 }
 
 // -------------------------------------------------------------------

@@ -3,7 +3,7 @@ package core
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -370,55 +370,59 @@ func resaveViewsWithChangedFields(app App, excludeIds ...string) error {
 	}
 
 	return app.RunInTransaction(func(txApp App) error {
+		var collectionErrors []error
+
 		for _, collection := range collections {
 			if len(excludeIds) > 0 && list.ExistInSlice(collection.Id, excludeIds) {
 				continue
 			}
 
-			// clone the existing fields for temp modifications
-			oldFields, err := collection.Fields.Clone()
-			if err != nil {
-				return err
+			check := func() error {
+				// clone the existing fields for temp modifications
+				oldFields, err := collection.Fields.Clone()
+				if err != nil {
+					return err
+				}
+
+				// generate new fields from the query
+				newFields, err := txApp.CreateViewFields(collection.ViewQuery)
+				if err != nil {
+					return err
+				}
+
+				// unset the fields' ids to exclude from the comparison
+				for _, f := range oldFields {
+					f.SetId("")
+				}
+				for _, f := range newFields {
+					f.SetId("")
+				}
+
+				encodedNewFields, err := json.Marshal(newFields, json.Deterministic(true))
+				if err != nil {
+					return err
+				}
+
+				encodedOldFields, err := json.Marshal(oldFields, json.Deterministic(true))
+				if err != nil {
+					return err
+				}
+
+				if bytes.EqualFold(encodedNewFields, encodedOldFields) {
+					return nil // no changes
+				}
+
+				return saveViewCollection(txApp, collection, nil)
 			}
 
-			// generate new fields from the query
-			// Note:
-			// dry run the query by creating a temp view. If it succeeds,
-			// and somehow the view fields are different than existing view,
-			// we will save the temp view as the new view.
-			// If it a dependent table/view does not exist, it will throw an error.
-			newFields, err := txApp.CreateViewFields(collection.ViewQuery)
-			if err != nil {
-				return err
-			}
-
-			// unset the fields' ids to exclude from the comparison
-			for _, f := range oldFields {
-				f.SetId("")
-			}
-			for _, f := range newFields {
-				f.SetId("")
-			}
-
-			encodedNewFields, err := json.Marshal(newFields)
-			if err != nil {
-				return err
-			}
-
-			encodedOldFields, err := json.Marshal(oldFields)
-			if err != nil {
-				return err
-			}
-
-			if bytes.EqualFold(encodedNewFields, encodedOldFields) {
-				continue // no changes
-			}
-
-			if err := saveViewCollection(txApp, collection, nil); err != nil {
-				return err
+			if err := check(); err != nil {
+				collectionErrors = append(
+					collectionErrors,
+					fmt.Errorf("[%s] %w", collection.Name, err),
+				)
 			}
 		}
 
-		return nil
+		return errors.Join(collectionErrors...)
 	})
 }

@@ -47,9 +47,9 @@ jobs:
           node-version: '>=25.2.1'
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '>=1.26.6'
+          go-version: '>=1.27.0'
 
       # This step usually is not needed because the /ui/dist is pregenerated locally
       # but its here to ensure that each release embeds the latest admin ui artifacts.
@@ -65,7 +65,7 @@ jobs:
       #   run: go run ./plugins/jsvm/internal/types/types.go
 
       - name: Run tests
-        run: go test ./...
+        run: go test -p 1 ./... -count=1 -timeout=30m
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
