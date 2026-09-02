@@ -67,11 +67,9 @@ jobs:
       - name: Run tests
         run: go test -p 1 ./... -count=1 -timeout=30m
 
-      - name: Run GoReleaser
+      - name: Run GoReleaser without publishing
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean ${{ env.flags }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          args: release --clean --skip=publish ${{ env.flags }}
