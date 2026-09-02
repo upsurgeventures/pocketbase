@@ -65,7 +65,7 @@ jobs:
       #   run: go run ./plugins/jsvm/internal/types/types.go
 
       - name: Run tests
-        run: go test ./...
+        run: go test -p 1 ./... -count=1 -timeout=30m
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
