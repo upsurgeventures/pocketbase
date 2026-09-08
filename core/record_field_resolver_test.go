@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"encoding/json/v2"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -77,6 +78,34 @@ func TestRecordFieldResolverAllowHiddenFields(t *testing.T) {
 	allowHiddenFields = r.AllowHiddenFields()
 	if allowHiddenFields != expected {
 		t.Fatalf("Expected changed allowHiddenFields %v, got %v", expected, allowHiddenFields)
+	}
+}
+
+func TestRecordFieldResolverDistinctWithRowidSort(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("demo4")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := core.NewRecordFieldResolver(app, collection, nil, true)
+	provider := search.NewProvider(resolver).
+		Query(app.RecordQuery(collection)).
+		CountCol("ctid")
+
+	params := url.Values{
+		"filter": {`self_rel_one.title = "test2"`},
+		"sort":   {"-@rowid"},
+	}
+	var records []*core.Record
+	_, err = provider.ParseAndExec(params.Encode(), &records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
 	}
 }
 
