@@ -210,6 +210,23 @@ func (r *RecordFieldResolver) updateQueryWithCollectionListRule(c *Collection, t
 func (r *RecordFieldResolver) updateQueryWithDeduplicateConstraint(query *dbx.SelectQuery) {
 	query.Distinct(true)
 
+	info := query.Info()
+	for _, orderBy := range info.OrderBy {
+		if strings.Contains(orderBy, "[[ctid]]") {
+			table := r.baseCollection.Name
+			if r.baseCollectionAlias != "" {
+				table = r.baseCollectionAlias
+			}
+			// PostgreSQL requires DISTINCT sort expressions in the select list,
+			// and table.* does not include the system ctid column.
+			rowidSelect := fmt.Sprintf("[[%s.ctid]] AS [[__pb_rowid]]", table)
+			if !slices.Contains(info.Selects, rowidSelect) {
+				query.AndSelect(rowidSelect)
+			}
+			break
+		}
+	}
+
 	// @todo Research better options for generic rows deduplication.
 	//
 	// Disable the GROUP BY conditional checks for now since it prevents
